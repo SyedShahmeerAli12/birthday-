@@ -1,0 +1,1254 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>A Surprise for Javeria!</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Parisienne&family=Quicksand:wght@300;500&display=swap" rel="stylesheet">
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            font-family: 'Quicksand', sans-serif;
+            color: #967676;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            background: linear-gradient(135deg, #ff9a9e 0%, #fecfef 100%); /* Initial romantic gradient */
+            perspective: 1000px;
+        }
+
+        #start-screen {
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            text-align: center;
+            width: 100%;
+            height: 100%;
+            background: radial-gradient(circle, rgba(123, 105, 112, 0.8) 0%, rgba(255,182,193,0.9) 30%, rgba(221,160,221,1) 100%),
+                        url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100" viewBox="0 0 100 100"><text y="50%" dy="0.35em" text-anchor="middle" font-size="80" fill="rgba(255,255,255,0.1)">💖</text></svg>');
+            background-size: cover, 100px 100px;
+            animation: pulseBackground 10s infinite alternate;
+            position: absolute;
+            top: 0;
+            left: 0;
+            z-index: 100;
+            opacity: 1;
+            transition: opacity 1.5s ease-out;
+        }
+
+        @keyframes pulseBackground {
+            0% { background-color: #ffdde1; }
+            100% { background-color: #ee9ca7; }
+        }
+
+        #surprise-button {
+            padding: 20px 40px;
+            font-size: 1.8em;
+            font-family: 'Parisienne', cursive;
+            color: #fff;
+            background: linear-gradient(135deg, #ff758c 0%, #ff7eb3 100%);
+            border: none;
+            border-radius: 50px;
+            cursor: pointer;
+            box-shadow: 0 10px 25px rgba(255, 105, 180, 0.5), 0 0 15px rgba(255,255,255,0.5) inset;
+            transition: transform 0.3s ease, box-shadow 0.3s ease;
+            animation: floatButton 3s infinite ease-in-out;
+        }
+
+        #surprise-button:hover {
+            transform: scale(1.1) translateY(-5px);
+            box-shadow: 0 15px 35px rgba(255, 105, 180, 0.7), 0 0 20px rgba(255,255,255,0.7) inset;
+        }
+        
+        @keyframes floatButton {
+            0%, 100% { transform: translateY(0); }
+            50% { transform: translateY(-10px); }
+        }
+
+        .message {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%) scale(0.5);
+            font-size: 3em;
+            font-family: 'Parisienne', cursive;
+            color: #fff;
+            text-shadow: 0 0 10px #ff69b4, 0 0 20px #ff69b4, 0 0 30px #ffc0cb, 0 0 40px #ffc0cb;
+            opacity: 0;
+            transition: opacity 1s ease-in-out, transform 1s ease-in-out;
+            z-index: 50;
+            text-align: center;
+            pointer-events: none; /* Allow clicks to pass through to canvas */
+        }
+
+        .message.visible {
+            opacity: 1;
+            transform: translate(-50%, -50%) scale(1);
+        }
+        
+        #birthday-message { top: 20%; }
+        #final-message { top: 70%; }
+        @keyframes pulseText {
+            0%, 100% { transform: translate(-50%, -50%) scale(1); }
+            50% { transform: translate(-50%, -50%) scale(1.05); }
+        }
+        #three-canvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 1;
+            opacity: 0;
+            transition: opacity 1.5s ease-in;
+        }
+        #three-canvas.visible {
+            opacity: 1;
+        }
+
+    </style>
+</head>
+<body>
+    <div id="start-screen">
+        <button id="surprise-button">Click Me for a Surprise</button>
+    </div>
+
+    <div id="birthday-message" class="message">Happy Birthday Javeria (panda)!</div>
+
+    <canvas id="three-canvas"></canvas>
+    <audio id="bg-music" src="music.mp3" loop preload="auto"></audio>
+    <audio id="gift-audio" src="love.mp3" preload="auto"></audio>
+
+    <script>
+        // --- Global Variables ---
+        let scene, camera, renderer, clock;
+        let cake, cakeSlice, giftBox, lid, flowerBouquet, panda, scroll;
+        let currentStage = 0; // 0: start, 1: cake, 2: gift intro, 3: gift open, 4: flowers explode, 5: panda appears, 6: panda disappears, 7: scroll appears, 8: final
+        let animationProgress = 0;
+        const raycaster = new THREE.Raycaster();
+        const mouse = new THREE.Vector2();
+        let sliceFeedingProgress = 0;
+        let isFeedingSlice = false;
+        let explodingFlowers = [];
+        let flowerExplosionProgress = 0;
+        let scrollAppearProgress = 0;
+
+        // --- DOM Elements ---
+        const startScreen = document.getElementById('start-screen');
+        const surpriseButton = document.getElementById('surprise-button');
+        const birthdayMessage = document.getElementById('birthday-message');
+        const audioElement = document.getElementById('bg-music');
+        const giftAudioElement = document.getElementById('gift-audio');
+        const threeCanvas = document.getElementById('three-canvas');
+
+        // --- Event Listeners ---
+        surpriseButton.addEventListener('click', startSurprise);
+        window.addEventListener('resize', onWindowResize, false);
+
+        // --- Initialization ---
+        function initThree() {
+            try {
+                // Check if canvas exists and is ready
+                if (!threeCanvas) {
+                    console.error("Canvas element not found!");
+                    return;
+                }
+                
+            clock = new THREE.Clock();
+            scene = new THREE.Scene();
+            scene.background = new THREE.Color(0x4a004a); // Dark romantic purple
+
+            camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+            camera.position.z = 15;
+            camera.position.y = 5;
+
+                // Create renderer with error handling
+                try {
+                    renderer = new THREE.WebGLRenderer({ 
+                        canvas: threeCanvas, 
+                        antialias: true, 
+                        alpha: true,
+                        powerPreference: "high-performance",
+                        failIfMajorPerformanceCaveat: false
+                    });
+                    
+                    if (!renderer.getContext()) {
+                        throw new Error("WebGL context creation failed");
+                    }
+                    
+            renderer.setSize(window.innerWidth, window.innerHeight);
+                    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2)); // Limit pixel ratio
+            renderer.shadowMap.enabled = true;
+            renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+                } catch (renderError) {
+                    console.error("WebGL Renderer creation failed:", renderError);
+                    alert("WebGL is not supported in your browser. Please try updating your browser or graphics drivers.");
+                    return;
+                }
+
+                // Lights - reduced and more uniform
+                const ambientLight = new THREE.AmbientLight(0xffffff, 1.0); // Uniform white light
+            scene.add(ambientLight);
+
+                // Reduced point light for subtle shadows
+                const pointLight = new THREE.PointLight(0xffffff, 0.3, 100); // Very soft white light
+                pointLight.position.set(0, 5, 10);
+            scene.add(pointLight);
+            
+            // Ground plane for shadows
+            const planeGeometry = new THREE.PlaneGeometry(50, 50);
+            const planeMaterial = new THREE.ShadowMaterial({ opacity: 0.3 });
+            const plane = new THREE.Mesh(planeGeometry, planeMaterial);
+            plane.rotation.x = -Math.PI / 2;
+            plane.position.y = -5; // Adjust based on cake/gift position
+            plane.receiveShadow = true;
+            scene.add(plane);
+
+            animate();
+            } catch (error) {
+                console.error("Three.js initialization error:", error);
+                alert("Failed to initialize 3D scene. Error: " + error.message);
+            }
+        }
+
+        // --- Stage Management ---
+        function startSurprise() {
+            startScreen.style.opacity = '0';
+            setTimeout(() => { startScreen.style.display = 'none'; }, 1500);
+            
+            audioElement.play().catch(error => console.error("Audio play failed:", error));
+            
+            threeCanvas.classList.add('visible');
+            
+            // Initialize Three.js first, then create objects
+            if (!renderer) {
+                initThree();
+            }
+            
+            // Only proceed if scene was created successfully
+            if (!scene) {
+                console.error("Scene not initialized!");
+                return;
+            }
+            
+            currentStage = 1;
+            createCake();
+            setTimeout(() => { 
+                birthdayMessage.classList.add('visible');
+            }, 1000); // Wait longer before showing message
+            
+            // Automatic cake cutting after 4 seconds (more time to appreciate cake)
+            setTimeout(() => {
+                if (cake) {
+                    createCakeSlice();
+                    // Sparkle effect at cake position
+                    const cakePos = new THREE.Vector3();
+                    cake.getWorldPosition(cakePos);
+                    createCuttingSparkles(cakePos);
+                }
+            }, 4000); // Increased from 2500 to 4000
+        }
+
+        // --- Object Creation ---
+        function createCake() {
+            // Main cake body
+            const cakeMaterial = new THREE.MeshStandardMaterial({ color: 0xffb6c1, roughness: 0.3, metalness: 0.1 }); // LightPink
+            const icingMaterial = new THREE.MeshStandardMaterial({ color: 0xfff0f5, roughness: 0.2, metalness: 0.0 }); // LavenderBlush (for icing)
+
+            cake = new THREE.Group();
+            
+            const layer1Geom = new THREE.CylinderGeometry(3, 3, 1.5, 32);
+            const layer1 = new THREE.Mesh(layer1Geom, cakeMaterial);
+            layer1.castShadow = true;
+            layer1.receiveShadow = true;
+            cake.add(layer1);
+
+            const layer2Geom = new THREE.CylinderGeometry(2.5, 2.5, 1.5, 32);
+            const layer2 = new THREE.Mesh(layer2Geom, cakeMaterial);
+            layer2.position.y = 1.5;
+            layer2.castShadow = true;
+            layer2.receiveShadow = true;
+            cake.add(layer2);
+            
+            // Icing drips (decorative spheres)
+            for (let i = 0; i < 16; i++) {
+                const dripGeom = new THREE.SphereGeometry(0.3, 16, 16);
+                const drip = new THREE.Mesh(dripGeom, icingMaterial);
+                const angle = (i / 16) * Math.PI * 2;
+                drip.position.set(Math.cos(angle) * 2.8, 0.6, Math.sin(angle) * 2.8);
+                layer1.add(drip);
+
+                const drip2 = new THREE.Mesh(dripGeom, icingMaterial);
+                drip2.position.set(Math.cos(angle) * 2.3, 2.1, Math.sin(angle) * 2.3);
+                layer2.add(drip2);
+            }
+
+            // Cake Slice (a wedge) - will be created when user cuts
+            cakeSlice = null;
+            cutProgress = 0;
+
+            cake.position.y = -2;
+            scene.add(cake);
+            camera.lookAt(cake.position);
+        }
+
+        function createGiftBox() {
+            giftBox = new THREE.Group();
+
+            const boxMaterial = new THREE.MeshStandardMaterial({ color: 0xdb7093, roughness: 0.4, metalness: 0.2 }); // PaleVioletRed
+            const ribbonMaterial = new THREE.MeshStandardMaterial({ color: 0xffd700, roughness: 0.2, metalness: 0.5 }); // Gold
+
+            // Box Base - made bigger
+            const baseGeom = new THREE.BoxGeometry(5, 3.5, 5);
+            const base = new THREE.Mesh(baseGeom, boxMaterial);
+            base.castShadow = true;
+            base.receiveShadow = true;
+            giftBox.add(base);
+
+            // Lid - made bigger
+            const lidGeom = new THREE.BoxGeometry(5.2, 1.2, 5.2); // Slightly larger than base
+            lid = new THREE.Mesh(lidGeom, boxMaterial);
+            lid.position.y = 1.75 + 0.6; // base_height/2 + lid_height/2 (updated for bigger box)
+            lid.castShadow = true;
+            lid.receiveShadow = true;
+            
+            // Ribbon - simple bands (updated for bigger box)
+            const ribbonThickness = 0.1;
+            const ribbonWidth = 0.6;
+            
+            // Vertical ribbon on lid
+            const ribbonVGeomLid = new THREE.BoxGeometry(ribbonWidth, 1.2 + ribbonThickness, 5.2 + ribbonThickness);
+            const ribbonVLid = new THREE.Mesh(ribbonVGeomLid, ribbonMaterial);
+            ribbonVLid.position.y = 0; // Centered on lid
+            lid.add(ribbonVLid);
+
+            // Horizontal ribbon on lid
+            const ribbonHGeomLid = new THREE.BoxGeometry(5.2 + ribbonThickness, 1.2 + ribbonThickness, ribbonWidth);
+            const ribbonHLid = new THREE.Mesh(ribbonHGeomLid, ribbonMaterial);
+            ribbonHLid.position.y = 0;
+            lid.add(ribbonHLid);
+            
+            // Vertical ribbon on base
+            const ribbonVGeomBase = new THREE.BoxGeometry(ribbonWidth, 3.5 + ribbonThickness, 5 + ribbonThickness);
+            const ribbonVBase = new THREE.Mesh(ribbonVGeomBase, ribbonMaterial);
+            ribbonVBase.position.y = 0; // Centered on base
+            base.add(ribbonVBase);
+
+            // Horizontal ribbon on base
+            const ribbonHGeomBase = new THREE.BoxGeometry(5 + ribbonThickness, 3.5 + ribbonThickness, ribbonWidth);
+            const ribbonHBase = new THREE.Mesh(ribbonHGeomBase, ribbonMaterial);
+            ribbonHBase.position.y = 0;
+            base.add(ribbonHBase);
+            
+            // Bow (simplified) - a couple of flattened spheres or toruses
+            const bowLoopGeom = new THREE.TorusGeometry(0.5, 0.15, 8, 20);
+            const bowLoop1 = new THREE.Mesh(bowLoopGeom, ribbonMaterial);
+            bowLoop1.position.set(-0.4, 0.55, 0); // On top of the lid
+            bowLoop1.rotation.y = Math.PI / 4;
+            lid.add(bowLoop1);
+
+            const bowLoop2 = new THREE.Mesh(bowLoopGeom, ribbonMaterial);
+            bowLoop2.position.set(0.4, 0.55, 0);
+            bowLoop2.rotation.y = -Math.PI / 4;
+            lid.add(bowLoop2);
+
+            const bowCenterGeom = new THREE.SphereGeometry(0.2, 8, 8);
+            const bowCenter = new THREE.Mesh(bowCenterGeom, ribbonMaterial);
+            bowCenter.position.y = 0.55;
+            lid.add(bowCenter);
+
+
+            giftBox.add(lid);
+            giftBox.position.y = -2; // Adjust so it sits on the "ground"
+            giftBox.visible = false; // Initially hidden
+            scene.add(giftBox);
+        }
+
+        function createExplodingFlowers() {
+            explodingFlowers = [];
+            const stemMaterial = new THREE.MeshStandardMaterial({ color: 0x228B22, roughness: 0.6 });
+            const flowerColors = [0xff69b4, 0xff1493, 0xda70d6, 0xffb6c1, 0xffd700, 0xff6347, 0xff1493, 0xda70d6];
+
+            const numFlowers = 30; // More flowers for explosion effect
+            
+            for (let i = 0; i < numFlowers; i++) {
+                const flowerGroup = new THREE.Group();
+
+                // Stem
+                const stemHeight = Math.random() * 1.5 + 1.5;
+                const stemGeom = new THREE.CylinderGeometry(0.05, 0.08, stemHeight, 8);
+                const stem = new THREE.Mesh(stemGeom, stemMaterial);
+                stem.position.y = stemHeight / 2;
+                flowerGroup.add(stem);
+
+                // Flower head (more varied)
+                const flowerSize = Math.random() * 0.4 + 0.3;
+                const flowerHeadGeom = new THREE.SphereGeometry(flowerSize, 16, 16);
+                const flowerMaterial = new THREE.MeshStandardMaterial({ 
+                    color: flowerColors[Math.floor(Math.random() * flowerColors.length)],
+                    roughness: 0.4,
+                    metalness: 0.1,
+                    emissive: flowerColors[Math.floor(Math.random() * flowerColors.length)],
+                    emissiveIntensity: 0.3
+                });
+                const flowerHead = new THREE.Mesh(flowerHeadGeom, flowerMaterial);
+                flowerHead.position.y = stemHeight + 0.3;
+                flowerHead.castShadow = true;
+                flowerGroup.add(flowerHead);
+
+                // Start position inside gift box
+                const boxPos = new THREE.Vector3();
+                if (giftBox) giftBox.getWorldPosition(boxPos);
+                flowerGroup.position.set(
+                    boxPos.x + (Math.random() - 0.5) * 2,
+                    boxPos.y - 1,
+                    boxPos.z + (Math.random() - 0.5) * 2
+                );
+                
+                // Random explosion direction
+                const angle = Math.random() * Math.PI * 2;
+                const elevation = (Math.random() - 0.3) * Math.PI / 2;
+                flowerGroup.userData.explodeDirection = new THREE.Vector3(
+                    Math.cos(angle) * Math.cos(elevation),
+                    Math.sin(elevation),
+                    Math.sin(angle) * Math.cos(elevation)
+                );
+                flowerGroup.userData.explodeSpeed = Math.random() * 3 + 2;
+                flowerGroup.userData.rotationSpeed = (Math.random() - 0.5) * 5;
+                
+                flowerGroup.visible = false;
+                explodingFlowers.push(flowerGroup);
+                scene.add(flowerGroup);
+            }
+        }
+
+        function createPanda() {
+            panda = new THREE.Group();
+            
+            // Panda body (white) - make transparent for fade out
+            const bodyGeom = new THREE.SphereGeometry(1.2, 16, 16);
+            const bodyMaterial = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.7, transparent: true, opacity: 1 });
+            const body = new THREE.Mesh(bodyGeom, bodyMaterial);
+            body.castShadow = true;
+            body.receiveShadow = true;
+            panda.add(body);
+            
+            // Black patches on shoulders/back (more realistic panda)
+            const shoulderPatch1 = new THREE.Mesh(
+                new THREE.SphereGeometry(0.4, 16, 16),
+                new THREE.MeshStandardMaterial({ color: 0x000000, roughness: 0.8, transparent: true, opacity: 1 })
+            );
+            shoulderPatch1.position.set(-0.5, 0.8, -0.3);
+            shoulderPatch1.scale.set(1.2, 0.8, 0.6);
+            panda.add(shoulderPatch1);
+            
+            const shoulderPatch2 = new THREE.Mesh(
+                new THREE.SphereGeometry(0.4, 16, 16),
+                new THREE.MeshStandardMaterial({ color: 0x000000, roughness: 0.8, transparent: true, opacity: 1 })
+            );
+            shoulderPatch2.position.set(0.5, 0.8, -0.3);
+            shoulderPatch2.scale.set(1.2, 0.8, 0.6);
+            panda.add(shoulderPatch2);
+            
+            // Black patch on lower back
+            const backPatch = new THREE.Mesh(
+                new THREE.SphereGeometry(0.5, 16, 16),
+                new THREE.MeshStandardMaterial({ color: 0x000000, roughness: 0.8, transparent: true, opacity: 1 })
+            );
+            backPatch.position.set(0, -0.3, -0.4);
+            backPatch.scale.set(1.5, 1, 0.5);
+            panda.add(backPatch);
+            
+            // Panda head (white, slightly smaller)
+            const headGeom = new THREE.SphereGeometry(0.9, 16, 16);
+            const headMaterial = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.7, transparent: true, opacity: 1 });
+            const head = new THREE.Mesh(headGeom, headMaterial);
+            head.position.set(0, 1.3, 0);
+            head.castShadow = true;
+            panda.add(head);
+            
+            // Black ears
+            const earGeom = new THREE.SphereGeometry(0.3, 16, 16);
+            const earMaterial = new THREE.MeshStandardMaterial({ color: 0x000000, roughness: 0.8, transparent: true, opacity: 1 });
+            const ear1 = new THREE.Mesh(earGeom, earMaterial);
+            ear1.position.set(-0.5, 1.8, 0);
+            ear1.scale.set(1, 0.5, 1);
+            panda.add(ear1);
+            
+            const ear2 = new THREE.Mesh(earGeom, earMaterial);
+            ear2.position.set(0.5, 1.8, 0);
+            ear2.scale.set(1, 0.5, 1);
+            panda.add(ear2);
+            
+            // Black eye patches
+            const eyePatchGeom = new THREE.SphereGeometry(0.25, 16, 16);
+            const eyePatchMaterial = new THREE.MeshStandardMaterial({ color: 0x000000, roughness: 0.8, transparent: true, opacity: 1 });
+            const eyePatch1 = new THREE.Mesh(eyePatchGeom, eyePatchMaterial);
+            eyePatch1.position.set(-0.3, 1.4, 0.7);
+            eyePatch1.scale.set(1.5, 1, 0.3);
+            panda.add(eyePatch1);
+            
+            const eyePatch2 = new THREE.Mesh(eyePatchGeom, eyePatchMaterial);
+            eyePatch2.position.set(0.3, 1.4, 0.7);
+            eyePatch2.scale.set(1.5, 1, 0.3);
+            panda.add(eyePatch2);
+            
+            // Eyes (white with black pupils)
+            const eyeGeom = new THREE.SphereGeometry(0.08, 8, 8);
+            const eyeMaterial = new THREE.MeshStandardMaterial({ color: 0xffffff, transparent: true, opacity: 1 });
+            const eye1 = new THREE.Mesh(eyeGeom, eyeMaterial);
+            eye1.position.set(-0.3, 1.4, 0.85);
+            panda.add(eye1);
+            
+            // Pupil for eye1
+            const pupil1 = new THREE.Mesh(
+                new THREE.SphereGeometry(0.04, 8, 8),
+                new THREE.MeshStandardMaterial({ color: 0x000000, transparent: true, opacity: 1 })
+            );
+            pupil1.position.set(-0.3, 1.4, 0.9);
+            panda.add(pupil1);
+            
+            const eye2 = new THREE.Mesh(eyeGeom, eyeMaterial);
+            eye2.position.set(0.3, 1.4, 0.85);
+            panda.add(eye2);
+            
+            // Pupil for eye2
+            const pupil2 = new THREE.Mesh(
+                new THREE.SphereGeometry(0.04, 8, 8),
+                new THREE.MeshStandardMaterial({ color: 0x000000, transparent: true, opacity: 1 })
+            );
+            pupil2.position.set(0.3, 1.4, 0.9);
+            panda.add(pupil2);
+            
+            // Black nose
+            const noseGeom = new THREE.SphereGeometry(0.15, 8, 8);
+            const noseMaterial = new THREE.MeshStandardMaterial({ color: 0x000000, transparent: true, opacity: 1 });
+            const nose = new THREE.Mesh(noseGeom, noseMaterial);
+            nose.position.set(0, 1.1, 0.9);
+            nose.scale.set(1, 0.7, 0.5);
+            panda.add(nose);
+            
+            // Arms (black)
+            const armGeom = new THREE.CylinderGeometry(0.2, 0.25, 0.8, 8);
+            const armMaterial = new THREE.MeshStandardMaterial({ color: 0x000000, roughness: 0.8, transparent: true, opacity: 1 });
+            const arm1 = new THREE.Mesh(armGeom, armMaterial);
+            arm1.position.set(-0.9, 0.5, 0);
+            arm1.rotation.z = Math.PI / 6;
+            arm1.castShadow = true;
+            panda.add(arm1);
+            
+            const arm2 = new THREE.Mesh(armGeom, armMaterial);
+            arm2.position.set(0.9, 0.5, 0);
+            arm2.rotation.z = -Math.PI / 6;
+            arm2.castShadow = true;
+            panda.add(arm2);
+            
+            // Legs (black)
+            const legGeom = new THREE.CylinderGeometry(0.25, 0.3, 0.6, 8);
+            const legMaterial = new THREE.MeshStandardMaterial({ color: 0x000000, roughness: 0.8, transparent: true, opacity: 1 });
+            const leg1 = new THREE.Mesh(legGeom, legMaterial);
+            leg1.position.set(-0.4, -0.9, 0);
+            leg1.castShadow = true;
+            panda.add(leg1);
+            
+            const leg2 = new THREE.Mesh(legGeom, legMaterial);
+            leg2.position.set(0.4, -0.9, 0);
+            leg2.castShadow = true;
+            panda.add(leg2);
+            
+            // Start position (inside gift box)
+            const boxPos = new THREE.Vector3();
+            if (giftBox) giftBox.getWorldPosition(boxPos);
+            panda.position.set(boxPos.x, boxPos.y - 1, boxPos.z);
+            panda.scale.set(0.1, 0.1, 0.1);
+            panda.visible = false;
+            scene.add(panda);
+        }
+
+        function createScroll() {
+            scroll = new THREE.Group();
+            
+            // Create scroll texture with text using canvas
+            const canvas = document.createElement('canvas');
+            canvas.width = 1024;
+            canvas.height = 1400;
+            const ctx = canvas.getContext('2d');
+            
+            // Background - parchment/scroll color
+            const gradient = ctx.createLinearGradient(0, 0, 0, canvas.height);
+            gradient.addColorStop(0, '#f4e4bc');
+            gradient.addColorStop(0.5, '#f9f1e0');
+            gradient.addColorStop(1, '#f4e4bc');
+            ctx.fillStyle = gradient;
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            
+            // Add some texture/aging effect
+            ctx.fillStyle = 'rgba(200, 180, 150, 0.1)';
+            for (let i = 0; i < 50; i++) {
+                ctx.fillRect(Math.random() * canvas.width, Math.random() * canvas.height, 20, 20);
+            }
+            
+            // Text styling
+            ctx.fillStyle = '#3d2817';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'top';
+            
+            // Title/First paragraph
+            ctx.font = 'bold 36px "Times New Roman", serif';
+            const text1 = "It's been a short time knowing you,";
+            const text2 = "but in this little time I've felt a strong connection.";
+            ctx.fillText(text1, canvas.width / 2, 150);
+            ctx.fillText(text2, canvas.width / 2, 200);
+            
+            // Second paragraph
+            ctx.font = 'italic 32px "Times New Roman", serif';
+            const text3 = "just wanna say that";
+            ctx.fillText(text3, canvas.width / 2, 300);
+            
+            // Urdu/Hindi text (special message)
+            ctx.font = 'bold 38px "Times New Roman", serif';
+            const text4 = '"safar khoobsurat h tmarhe sath';
+            const text5 = 'filhal manzil ki baat nhi krte."';
+            ctx.fillText(text4, canvas.width / 2, 380);
+            ctx.fillText(text5, canvas.width / 2, 430);
+            
+            // Closing
+            ctx.font = 'bold 36px "Times New Roman", serif';
+            const text6 = "Once again, happy birthday panda";
+            ctx.fillText(text6, canvas.width / 2, 550);
+            
+            // No decorative borders - clean A4 paper look
+            
+            // Create texture from canvas
+            const texture = new THREE.CanvasTexture(canvas);
+            texture.needsUpdate = true;
+            
+            // Scroll paper (main body) - A4 paper ratio (1:1.414) - made bigger
+            const paperWidth = 4; // Increased from 3
+            const paperHeight = 4 * 1.414; // A4 ratio - increased from 3
+            const scrollGeom = new THREE.PlaneGeometry(paperWidth, paperHeight);
+            const scrollMaterial = new THREE.MeshStandardMaterial({
+                map: texture,
+                side: THREE.DoubleSide,
+                roughness: 0.8,
+                metalness: 0.1,
+                transparent: false, // Not transparent - fully opaque
+                opacity: 1,
+                color: 0xffffff, // Ensure white/neutral color, no pink tint
+                emissive: 0x000000, // No emissive glow
+                depthWrite: true,
+                depthTest: true
+            });
+            const scrollPaper = new THREE.Mesh(scrollGeom, scrollMaterial);
+            scrollPaper.renderOrder = 999; // Render on top
+            // No rotation - straight like A4 paper
+            scroll.add(scrollPaper);
+            
+            // Scroll rods (top and bottom) - removed for cleaner A4 paper look
+            // Keeping it simple like a regular paper
+            
+            // Start position (centered, ready to appear, in front of gift box)
+            scroll.position.set(0, 0, 5); // In front of gift box (gift box is around z=0)
+            scroll.rotation.y = 0; // Straight
+            scroll.rotation.x = 0; // Straight
+            scroll.rotation.z = 0; // No rotation
+            scroll.scale.set(0, 0, 0); // Start completely hidden (scale 0)
+            scroll.visible = false;
+            scene.add(scroll);
+        }
+
+        function createFlowerBouquet() {
+            flowerBouquet = new THREE.Group();
+            const stemMaterial = new THREE.MeshStandardMaterial({ color: 0x228B22, roughness: 0.6 }); // ForestGreen
+            const flowerColors = [0xff69b4, 0xff1493, 0xda70d6, 0xffb6c1]; // HotPink, DeepPink, Orchid, LightPink
+
+            const numFlowers = 15;
+            for (let i = 0; i < numFlowers; i++) {
+                const flowerGroup = new THREE.Group();
+
+                // Stem
+                const stemHeight = Math.random() * 2 + 2; // Varying heights
+                const stemGeom = new THREE.CylinderGeometry(0.05, 0.08, stemHeight, 8);
+                const stem = new THREE.Mesh(stemGeom, stemMaterial);
+                stem.position.y = stemHeight / 2;
+                flowerGroup.add(stem);
+
+                // Flower head (simple sphere)
+                const flowerHeadGeom = new THREE.SphereGeometry(Math.random() * 0.3 + 0.4, 16, 16); // Varying sizes
+                const flowerMaterial = new THREE.MeshStandardMaterial({ 
+                    color: flowerColors[Math.floor(Math.random() * flowerColors.length)],
+                    roughness: 0.4,
+                    metalness: 0.1 
+                });
+                const flowerHead = new THREE.Mesh(flowerHeadGeom, flowerMaterial);
+                flowerHead.position.y = stemHeight + 0.3; // Atop the stem
+                flowerHead.castShadow = true;
+                flowerGroup.add(flowerHead);
+                
+                // Random placement in bouquet
+                flowerGroup.position.set(
+                    (Math.random() - 0.5) * 1.5, // Spread within bouquet
+                    0,
+                    (Math.random() - 0.5) * 1.5
+                );
+                flowerGroup.rotation.x = (Math.random() - 0.5) * 0.3;
+                flowerGroup.rotation.z = (Math.random() - 0.5) * 0.3;
+
+                flowerBouquet.add(flowerGroup);
+            }
+
+            flowerBouquet.position.set(0, -1, 0); // Start inside the box
+            flowerBouquet.scale.set(0.1, 0.1, 0.1); // Start small
+            flowerBouquet.visible = false;
+            giftBox.add(flowerBouquet); // Add to giftbox so it moves with it if box moves
+        }
+
+        // --- Animation Loop ---
+        function animate() {
+            requestAnimationFrame(animate);
+            const delta = clock.getDelta();
+            animationProgress += delta;
+
+            if (cake && currentStage === 1 && !isFeedingSlice) {
+                cake.rotation.y += delta * 0.2; // Gentle rotation
+            }
+
+            // Stage 1: Automatic cutting and feeding animation
+            if (currentStage === 1 && cakeSlice) {
+                if (!isFeedingSlice) {
+                    // First phase: Slice cuts itself out (0-2 seconds)
+                    if (animationProgress < 2) {
+                        const cutProgress = Math.min(animationProgress / 2, 1);
+                        const cakePos = new THREE.Vector3();
+                        cake.getWorldPosition(cakePos);
+                        
+                        // Slice moves out from cake
+                        const angle = cake.rotation.y;
+                        const startX = cakePos.x;
+                        const startZ = cakePos.z;
+                        const startY = cakePos.y + 1.5;
+                        
+                        cakeSlice.position.x = startX + Math.cos(angle) * cutProgress * 3;
+                        cakeSlice.position.z = startZ + Math.sin(angle) * cutProgress * 3;
+                        cakeSlice.position.y = startY;
+                        cakeSlice.rotation.y = angle;
+                        cakeSlice.rotation.x = -Math.PI / 2;
+                        cakeSlice.rotation.z = cutProgress * Math.PI / 4; // Tilt as it comes out
+                    } else {
+                        // Second phase: Feeding animation - slice moves toward camera/user
+                        isFeedingSlice = true;
+                        sliceFeedingProgress = 0;
+                    }
+                } else {
+                    // Feeding animation: move slice toward camera (slower, smoother)
+                    sliceFeedingProgress += delta * 0.4; // Slower speed for smoother animation
+                    
+                    const cakePos = new THREE.Vector3();
+                    cake.getWorldPosition(cakePos);
+                    const angle = cake.rotation.y;
+                    
+                    // Start position (after cutting out)
+                    const startPos = new THREE.Vector3(
+                        cakePos.x + Math.cos(angle) * 3,
+                        cakePos.y + 1.5,
+                        cakePos.z + Math.sin(angle) * 3
+                    );
+                    
+                    // End position (close to camera - feeding position)
+                    const endPos = new THREE.Vector3(0, 3, -3);
+                    
+                    // Smooth movement toward user
+                    cakeSlice.position.lerpVectors(startPos, endPos, sliceFeedingProgress);
+                    
+                    // Rotate to face user
+                    cakeSlice.rotation.x = -Math.PI / 2 + sliceFeedingProgress * Math.PI / 3;
+                    cakeSlice.rotation.y += delta * 0.5;
+                    
+                    // Scale up slightly as it comes closer (like zooming in)
+                    const scale = 1 + sliceFeedingProgress * 0.8;
+                    cakeSlice.scale.set(scale, scale, scale);
+                    
+                    // After feeding completes, automatically transition to gift box after 1 second
+                    if (sliceFeedingProgress >= 1) {
+                        setTimeout(() => {
+                    birthdayMessage.classList.remove('visible');
+                            
+                            // Remove cake and slice
+                    if (cake) scene.remove(cake);
+                    if (cakeSlice) scene.remove(cakeSlice);
+                            cake = null; 
+                            cakeSlice = null;
+                            
+                            // Stop background music when gift box appears
+                            audioElement.pause();
+                            audioElement.currentTime = 0;
+                            
+                            // Transition to gift box after 1 second delay
+                            setTimeout(() => {
+                    currentStage = 2;
+                    createGiftBox();
+                                createExplodingFlowers();
+                                createPanda();
+                                createScroll();
+                                giftBox.visible = true;
+                                camera.position.set(0, 3, 10);
+                                camera.lookAt(giftBox.position);
+                                animationProgress = 0;
+                                flowerExplosionProgress = 0;
+                                
+                                // Automatically open gift box after 3 seconds (more time to appreciate it)
+                                setTimeout(() => {
+                                    // Play love.mp3 when gift box opens
+                                    giftAudioElement.volume = 1.0;
+                                    giftAudioElement.currentTime = 0;
+                                    giftAudioElement.play().then(() => {
+                                        console.log("Love audio started playing");
+                                    }).catch(error => {
+                                        console.error("Love audio play failed:", error);
+                                        setTimeout(() => {
+                                            giftAudioElement.play().catch(err => console.error("Retry failed:", err));
+                                        }, 100);
+                                    });
+                                    currentStage = 3; // Start gift box opening
+                                    animationProgress = 0;
+                                }, 3000); // Increased from 2000 to 3000
+                            }, 1500); // Increased from 1000 to 1500
+                        }, 1500); // Increased from 1000 to 1500
+                    }
+                }
+            }
+
+            // Stage 3: Gift box opening animation (more dynamic, slower)
+            if (currentStage === 3 && lid) {
+                if (animationProgress < 3.5) { // 3.5 seconds to open (slower)
+                    const openProgress = Math.min(animationProgress / 3.5, 1);
+                    // Smooth easing with slight bounce
+                    const eased = 1 - Math.pow(1 - openProgress, 3);
+                    
+                    // Lid opens by rotating around its back edge with bounce
+                    lid.rotation.x = eased * Math.PI * 0.8; // Open up to ~144 degrees
+                    lid.position.z -= delta * 0.8; // Slower movement back
+                    lid.position.y += delta * 0.3; // Slower movement up
+                    
+                    // Add slight rotation for more dynamic feel
+                    lid.rotation.z = Math.sin(animationProgress * 2) * 0.08;
+                } else {
+                    currentStage = 4; // Move to flower explosion
+                    // Make all flowers visible and start explosion
+                    explodingFlowers.forEach(flower => {
+                        flower.visible = true;
+                    });
+                    animationProgress = 0;
+                    flowerExplosionProgress = 0;
+                }
+            }
+
+            // Stage 4: Flower explosion animation (more dynamic and colorful)
+            if (currentStage === 4 && explodingFlowers.length > 0) {
+                flowerExplosionProgress += delta;
+                
+                // Camera shake effect during explosion
+                if (flowerExplosionProgress < 0.3) {
+                    camera.position.x += (Math.random() - 0.5) * 0.1;
+                    camera.position.y += (Math.random() - 0.5) * 0.1;
+                }
+                
+                explodingFlowers.forEach((flower, index) => {
+                    if (flower.visible) {
+                        const dir = flower.userData.explodeDirection;
+                        const speed = flower.userData.explodeSpeed;
+                        const rotSpeed = flower.userData.rotationSpeed;
+                        
+                        // Explode outward with more dynamic movement - but keep behind scroll (scroll is at z = -8)
+                        flower.position.x += dir.x * speed * delta * (1 + Math.sin(flowerExplosionProgress * 2));
+                        flower.position.y += dir.y * speed * delta * (1 + Math.sin(flowerExplosionProgress * 2));
+                        // Keep flowers behind scroll - limit z to stay at least z = 0 (behind scroll at z = -8)
+                        const newZ = flower.position.z + dir.z * speed * delta;
+                        flower.position.z = Math.max(0, newZ); // Don't let flowers go in front of scroll
+                        
+                        // More dynamic rotation as it flies
+                        flower.rotation.x += rotSpeed * delta * 2;
+                        flower.rotation.y += rotSpeed * delta * 2;
+                        flower.rotation.z += rotSpeed * delta * 2;
+                        
+                        // Scale pulsing effect
+                        const pulse = 1 + Math.sin(flowerExplosionProgress * 5 + index) * 0.2;
+                        flower.scale.set(pulse, pulse, pulse);
+                        
+                        // Fade out and fall
+                        if (flowerExplosionProgress > 0.5) {
+                            flower.position.y -= delta * 2.5; // Gravity
+                            if (flower.children[1] && flower.children[1].material) {
+                                flower.children[1].material.opacity = Math.max(0, 1 - (flowerExplosionProgress - 0.5) * 2);
+                                flower.children[1].material.transparent = true;
+                            }
+                        }
+                    }
+                });
+                
+                // After explosion, show panda first (wait longer)
+                if (flowerExplosionProgress > 3.5) {
+                    currentStage = 5; // Panda appears first
+                    if (panda) {
+                        panda.visible = true;
+                    }
+                    // Keep scroll hidden
+                    if (scroll) {
+                        scroll.visible = false;
+                    }
+                    // Reset camera shake
+                    camera.position.x = 0;
+                    camera.position.y = 3;
+                    animationProgress = 0;
+                }
+            }
+            
+            // Stage 5 & 6: Ensure gift box stays visible for panda, but prepare to hide it
+            if ((currentStage === 5 || currentStage === 6) && giftBox) {
+                // Keep gift box visible during panda animation, but prepare for removal
+                // We'll hide it completely in stage 6 when panda disappears
+            }
+            
+            // Stage 5: Panda appearance animation (comes out completely from gift box with rotation)
+            if (currentStage === 5 && panda) {
+                // Get box position
+                const boxPos = new THREE.Vector3();
+                if (giftBox) {
+                    giftBox.getWorldPosition(boxPos);
+                } else {
+                    boxPos.set(0, -2, 0); // Default gift box position
+                }
+                
+                if (animationProgress < 4) {
+                    // Panda grows and rises from box - make sure it comes out completely (slower)
+                    
+                    // Panda scales up to full size (slower)
+                    const scale = Math.min(0.1 + animationProgress * 0.225, 1);
+                    panda.scale.set(scale, scale, scale);
+                    
+                    // Set panda position relative to gift box - make sure it comes out fully
+                    panda.position.x = boxPos.x;
+                    panda.position.z = boxPos.z;
+                    // Panda rises up completely above the box - higher position (slower)
+                    const targetY = boxPos.y + 4; // Much higher above box
+                    panda.position.y = Math.min(boxPos.y - 1 + animationProgress * 1.3, targetY);
+                    
+                    // Full rotation as panda comes out (360 degrees, slower)
+                    panda.rotation.y = animationProgress * Math.PI * 1.5; // Slower rotation
+                    
+                    // Make sure panda is fully visible
+                    panda.children.forEach((child) => {
+                        if (child.material) {
+                            child.material.opacity = 1;
+                            child.material.transparent = true;
+                        }
+                    });
+                } else if (animationProgress < 9) {
+                    // Panda is fully out - take a round (rotate around) and stay visible (longer time)
+                    panda.position.x = boxPos.x;
+                    panda.position.z = boxPos.z;
+                    panda.position.y = boxPos.y + 4 + Math.sin(clock.elapsedTime * 1.5) * 0.15; // Slower bounce
+                    panda.scale.set(1, 1, 1); // Keep at full size
+                    
+                    // Continue rotating around (taking a round) - slower rotation
+                    const rotationSpeed = 0.8; // Slower rotation
+                    panda.rotation.y += delta * rotationSpeed;
+                    
+                    // Make sure panda stays fully visible during rotation
+                    panda.children.forEach((child) => {
+                        if (child.material) {
+                            child.material.opacity = 1;
+                            child.material.transparent = true;
+                        }
+                    });
+                } else {
+                    // Now make it disappear
+                    currentStage = 6; // Move to panda disappearing
+                    animationProgress = 0;
+                }
+            }
+            
+            // Stage 6: Panda disappears (fade out and move away)
+            if (currentStage === 6 && panda) {
+                if (animationProgress < 1.5) {
+                    // Fade out panda
+                    const fadeProgress = animationProgress / 1.5;
+                    panda.children.forEach((child) => {
+                        if (child.material) {
+                            child.material.opacity = 1 - fadeProgress;
+                            child.material.transparent = true;
+                        }
+                    });
+                    
+                    // Move panda away (to the side or back)
+                    panda.position.x += delta * 2; // Move to the right
+                    panda.position.y -= delta * 1; // Move down
+                    panda.scale.multiplyScalar(0.98); // Shrink slightly
+                } else {
+                    // Panda is gone, hide it completely
+                    panda.visible = false;
+                    
+                    // REMOVE gift box from scene completely
+                    if (giftBox) {
+                        scene.remove(giftBox);
+                        giftBox = null;
+                    }
+                    
+                    // Also remove any remaining flowers
+                    explodingFlowers.forEach(flower => {
+                        scene.remove(flower);
+                    });
+                    explodingFlowers = [];
+                    
+                    // Move to scroll appearance
+                    currentStage = 7;
+                    if (scroll) {
+                        scroll.visible = true;
+                    }
+                    animationProgress = 0;
+                    scrollAppearProgress = 0;
+                }
+            }
+            
+            // Stage 7: Scroll appearance animation (A4 paper style) - appears after panda is gone
+            if (currentStage === 7 && scroll) {
+                scrollAppearProgress += delta * 0.8; // Slower, smoother appearance
+                
+                // Smooth transition progress
+                const progress = Math.min(scrollAppearProgress, 1);
+                
+                // Make sure scroll is visible
+                scroll.visible = true;
+                
+                // Remove gift box if still exists
+                if (giftBox) {
+                    scene.remove(giftBox);
+                    giftBox = null;
+                }
+                
+                // Smoothly adjust camera to look at scroll
+                const targetCamY = 0; // Center vertically
+                const currentCamY = camera.position.y;
+                camera.position.y = currentCamY + (targetCamY - currentCamY) * delta * 1.5; // Smooth transition
+                camera.position.z = 15; // Move camera further back to see whole scroll
+                camera.lookAt(0, 0, 5); // Look at scroll position
+                
+                // Position scroll BETWEEN camera and gift box (higher z = closer to camera)
+                scroll.position.set(0, 0, 5); // Closer to camera (higher z = closer when camera at z=12)
+                scroll.renderOrder = 999; // Render on top of everything
+                scroll.rotation.x = 0; // Straight, no tilt
+                scroll.rotation.y = 0; // Straight, facing camera
+                scroll.rotation.z = 0; // No rotation
+                
+                // Keep flowers behind scroll - push them back and fade them out
+                explodingFlowers.forEach((flower) => {
+                    if (flower.visible) {
+                        // Push flowers MUCH further back (behind scroll at z = -8)
+                        if (flower.position.z < 0) {
+                            flower.position.z = 0; // Keep at least z = 0 (behind scroll at z = -8)
+                        }
+                        // Fade out flowers as scroll appears
+                        flower.children.forEach((child) => {
+                            if (child.material) {
+                                child.material.opacity = Math.max(0, (1 - progress) * 0.3); // Fade out more
+                                child.material.transparent = true;
+                            }
+                        });
+                    }
+                });
+                
+                // Smooth scale up transition with bounce effect (starts small, grows to full size)
+                const finalScale = 1.8; // Slightly bigger but still fits on screen
+                const easeProgress = 1 - Math.pow(1 - progress, 3); // Ease out cubic for smooth transition
+                // Add slight bounce effect
+                const bounce = progress < 1 ? 1 + Math.sin(progress * Math.PI * 3) * 0.1 : 1;
+                scroll.scale.set(finalScale * easeProgress * bounce, finalScale * easeProgress * bounce, finalScale * easeProgress * bounce);
+                
+                // Smooth camera zoom in effect
+                const targetZ = 8;
+                camera.position.z = 10 + (targetZ - 10) * easeProgress;
+                
+                // Fade in effect for all children - but keep fully opaque
+                scroll.children.forEach((child) => {
+                    if (child.material) {
+                        child.material.opacity = Math.max(progress, 0.99); // Always nearly fully opaque
+                        child.material.transparent = false; // Not transparent for better visibility
+                    }
+                });
+                
+                // After scroll is fully visible, move to final stage
+                if (scrollAppearProgress >= 1) {
+                    currentStage = 8;
+                    animationProgress = 0;
+                }
+            }
+            
+            // Stage 8: Final - scroll stays visible (panda is gone, gift box removed)
+            if (currentStage === 8) {
+                // Make absolutely sure gift box is gone
+                if (giftBox) {
+                    scene.remove(giftBox);
+                    giftBox = null;
+                }
+                
+                // Make sure panda is gone
+                if (panda) {
+                    panda.visible = false;
+                }
+                
+                // Keep camera at good position to see scroll - further back to see whole scroll
+                camera.position.set(0, 0, 15);
+                camera.lookAt(0, 0, 5); // Look at scroll position
+                
+                // Scroll stays in center, perfectly straight like A4 paper - gentle floating animation
+                if (scroll && scroll.visible) {
+                    // Gentle floating effect
+                    const floatOffset = Math.sin(clock.elapsedTime * 0.8) * 0.1;
+                    scroll.position.set(0, floatOffset, 5); // In front of gift box position
+                    scroll.scale.set(1.8, 1.8, 1.8); // Slightly bigger but still fits on screen
+                    scroll.rotation.x = 0; // Stay perfectly straight
+                    scroll.rotation.y = 0; // Stay straight, facing camera
+                    scroll.rotation.z = 0; // No rotation
+                    scroll.renderOrder = 999; // Always render on top
+                    
+                    // Ensure all materials are fully visible and opaque
+                    scroll.children.forEach((child) => {
+                        if (child.material) {
+                            child.material.opacity = 1;
+                            child.material.transparent = false; // Fully opaque for best visibility
+                        }
+                    });
+                }
+                
+                // Gift box should already be removed, but double-check
+                if (giftBox) {
+                    scene.remove(giftBox);
+                    giftBox = null;
+                }
+                if (panda) {
+                    panda.visible = false;
+                }
+                
+                // Remove any remaining flowers
+                explodingFlowers.forEach((flower) => {
+                    if (flower.visible) {
+                        scene.remove(flower);
+                    }
+                });
+                
+                // Deprecated flower handling (keeping for safety)
+                explodingFlowers.forEach((flower) => {
+                    if (flower.visible && flower.parent) {
+                        // Ensure flowers stay MUCH behind scroll (z >= 0, scroll is at z = -8)
+                        if (flower.position.z < 0) {
+                            flower.position.z = 0;
+                        }
+                        // Keep flowers very faded out
+                        flower.children.forEach((child) => {
+                            if (child.material) {
+                                child.material.opacity = 0.1; // Very faded
+                                child.material.transparent = true;
+                            }
+                        });
+                    }
+                });
+            }
+
+
+            if (renderer) renderer.render(scene, camera);
+        }
+
+        // --- Event Handlers ---
+        function onWindowResize() {
+            if (camera && renderer) {
+                camera.aspect = window.innerWidth / window.innerHeight;
+                camera.updateProjectionMatrix();
+                renderer.setSize(window.innerWidth, window.innerHeight);
+            }
+        }
+
+        function createCakeSlice() {
+            if (cakeSlice) return; // Already exists
+            
+            // Create a wedge-shaped slice
+            const sliceShape = new THREE.Shape();
+            sliceShape.moveTo(0, 0);
+            sliceShape.lineTo(2.5, 0);
+            sliceShape.arc(0, 0, 2.5, 0, Math.PI / 4, false);
+            sliceShape.lineTo(0, 0);
+            
+            const extrudeSettings = { depth: 3, bevelEnabled: true, bevelThickness: 0.1, bevelSize: 0.1 };
+            const sliceGeometry = new THREE.ExtrudeGeometry(sliceShape, extrudeSettings);
+            
+            // Create material with inner cake color
+            const sliceMaterial = new THREE.MeshStandardMaterial({ 
+                color: 0xf4a460, 
+                roughness: 0.5, 
+                metalness: 0.1,
+                emissive: 0xffb6c1,
+                emissiveIntensity: 0.3
+            });
+            
+            cakeSlice = new THREE.Mesh(sliceGeometry, sliceMaterial);
+            cakeSlice.rotation.x = -Math.PI / 2;
+            cakeSlice.castShadow = true;
+            cakeSlice.receiveShadow = true;
+            
+            // Start at cake position
+            const cakePos = new THREE.Vector3();
+            cake.getWorldPosition(cakePos);
+            cakeSlice.position.copy(cakePos);
+            cakeSlice.position.y = cakePos.y + 1.5;
+            
+            scene.add(cakeSlice);
+            animationProgress = 0; // Reset animation timer
+        }
+
+        // Removed all click handlers - everything is now automatic
+
+        function createCuttingSparkles(position) {
+            // Create temporary sparkles
+            for (let i = 0; i < 20; i++) {
+                setTimeout(() => {
+                    const sparkle = new THREE.Mesh(
+                        new THREE.SphereGeometry(0.1, 8, 8),
+                        new THREE.MeshBasicMaterial({ 
+                            color: Math.random() > 0.5 ? 0xffd700 : 0xff69b4,
+                            transparent: true,
+                            opacity: 1
+                        })
+                    );
+                    sparkle.position.copy(position);
+                    sparkle.position.add(new THREE.Vector3(
+                        (Math.random() - 0.5) * 2,
+                        Math.random() * 2,
+                        (Math.random() - 0.5) * 2
+                    ));
+                    scene.add(sparkle);
+                    
+                    // Animate and remove
+                    let opacity = 1;
+                    const animateSparkle = () => {
+                        opacity -= 0.05;
+                        sparkle.material.opacity = opacity;
+                        sparkle.position.y += 0.1;
+                        sparkle.scale.multiplyScalar(1.05);
+                        
+                        if (opacity > 0) {
+                            requestAnimationFrame(animateSparkle);
+                        } else {
+                            scene.remove(sparkle);
+                        }
+                    };
+                    animateSparkle();
+                }, i * 50);
+            }
+        }
+
+    </script>
+</body>
+</html>
