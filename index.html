@@ -118,14 +118,15 @@
             }
             
             .message {
-                font-size: 1.8em;
-                padding: 0 20px;
+                font-size: 1.5em;
+                padding: 0 15px;
                 width: 90%;
             }
             
             #birthday-message {
-                top: 10%;
-                font-size: 1.5em;
+                top: 5%;
+                font-size: 1.3em;
+                line-height: 1.2;
             }
         }
         
@@ -136,13 +137,34 @@
             }
             
             .message {
-                font-size: 1.4em;
+                font-size: 1.2em;
             }
             
             #birthday-message {
-                top: 8%;
-                font-size: 1.2em;
+                top: 3%;
+                font-size: 1em;
+                line-height: 1.1;
             }
+        }
+        
+        /* Click prompt for gift on mobile */
+        #tap-gift-prompt {
+            position: absolute;
+            bottom: 15%;
+            left: 50%;
+            transform: translateX(-50%);
+            font-size: 1.2em;
+            font-family: 'Quicksand', sans-serif;
+            color: #fff;
+            text-shadow: 0 0 10px #ff69b4;
+            opacity: 0;
+            transition: opacity 0.5s;
+            z-index: 60;
+            text-align: center;
+            animation: pulseText 1.5s infinite;
+        }
+        #tap-gift-prompt.visible {
+            opacity: 1;
         }
 
     </style>
@@ -153,6 +175,7 @@
     </div>
 
     <div id="birthday-message" class="message">Happy Birthday Javeria (panda)!</div>
+    <div id="tap-gift-prompt">Tap the Gift Box! 🎁</div>
 
     <canvas id="three-canvas"></canvas>
     <audio id="bg-music" src="music.mp3" loop preload="auto" playsinline></audio>
@@ -176,13 +199,21 @@
         const startScreen = document.getElementById('start-screen');
         const surpriseButton = document.getElementById('surprise-button');
         const birthdayMessage = document.getElementById('birthday-message');
+        const tapGiftPrompt = document.getElementById('tap-gift-prompt');
         const audioElement = document.getElementById('bg-music');
         const giftAudioElement = document.getElementById('gift-audio');
         const threeCanvas = document.getElementById('three-canvas');
+        
+        // Track if user clicked gift (for mobile)
+        let giftClicked = false;
 
         // --- Event Listeners ---
         surpriseButton.addEventListener('click', startSurprise);
         window.addEventListener('resize', onWindowResize, false);
+        
+        // Click handler for gift box (mobile audio fix)
+        threeCanvas.addEventListener('click', onGiftClick, false);
+        threeCanvas.addEventListener('touchstart', onGiftClick, false);
 
         // --- Initialization ---
         function initThree() {
@@ -838,8 +869,8 @@
                             
                             // Transition to gift box after 1 second delay
                             setTimeout(() => {
-                    currentStage = 2;
-                    createGiftBox();
+                                currentStage = 2;
+                                createGiftBox();
                                 createExplodingFlowers();
                                 createPanda();
                                 createScroll();
@@ -848,25 +879,12 @@
                                 camera.lookAt(giftBox.position);
                                 animationProgress = 0;
                                 flowerExplosionProgress = 0;
+                                giftClicked = false;
                                 
-                                // Automatically open gift box after 3 seconds (more time to appreciate it)
-                                setTimeout(() => {
-                                    // Play love.mp3 when gift box opens
-                                    giftAudioElement.volume = 1.0;
-                                    giftAudioElement.currentTime = 0;
-                                    giftAudioElement.play().then(() => {
-                                        console.log("Love audio started playing");
-                                    }).catch(error => {
-                                        console.error("Love audio play failed:", error);
-                                        setTimeout(() => {
-                                            giftAudioElement.play().catch(err => console.error("Retry failed:", err));
-                                        }, 100);
-                                    });
-                                    currentStage = 3; // Start gift box opening
-                                    animationProgress = 0;
-                                }, 3000); // Increased from 2000 to 3000
-                            }, 1500); // Increased from 1000 to 1500
-                        }, 1500); // Increased from 1000 to 1500
+                                // Show tap prompt for mobile
+                                tapGiftPrompt.classList.add('visible');
+                            }, 1500);
+                        }, 1500);
                     }
                 }
             }
@@ -1295,6 +1313,34 @@
                     };
                     animateSparkle();
                 }, i * 50);
+            }
+        }
+
+        // Handle gift box click (for mobile audio)
+        function onGiftClick(event) {
+            // Only handle in stage 2 (gift visible, waiting for click)
+            if (currentStage === 2 && giftBox && !giftClicked) {
+                // Check if clicked on gift box area (simple check - any click when gift is visible)
+                giftClicked = true;
+                
+                // Hide tap prompt
+                tapGiftPrompt.classList.remove('visible');
+                
+                // Play love.mp3 when gift box is clicked
+                giftAudioElement.volume = 1.0;
+                giftAudioElement.currentTime = 0;
+                giftAudioElement.play().then(() => {
+                    console.log("Love audio started playing");
+                }).catch(error => {
+                    console.error("Love audio play failed:", error);
+                    setTimeout(() => {
+                        giftAudioElement.play().catch(err => console.error("Retry failed:", err));
+                    }, 100);
+                });
+                
+                // Start gift box opening
+                currentStage = 3;
+                animationProgress = 0;
             }
         }
 
