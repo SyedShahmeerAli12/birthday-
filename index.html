@@ -323,7 +323,7 @@
                 birthdayMessage.classList.add('visible');
             }, 1000); // Wait longer before showing message
             
-            // Automatic cake cutting after 6 seconds (more time to appreciate cake)
+            // Automatic cake cutting after 4 seconds (more time to appreciate cake)
             setTimeout(() => {
                 if (cake) {
                     createCakeSlice();
@@ -332,7 +332,7 @@
                     cake.getWorldPosition(cakePos);
                     createCuttingSparkles(cakePos);
                 }
-            }, 6000); // More time to see the cake
+            }, 4000); // Increased from 2500 to 4000
         }
 
         // --- Object Creation ---
